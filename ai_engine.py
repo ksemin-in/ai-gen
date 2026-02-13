@@ -1,9 +1,11 @@
 import csv
-from transformers import pipeline
+import requests
 
 class B2BContentEngine:
-    def __init__(self):
-        self.generator = pipeline("text-generation", model="EleutherAI/gpt-neo-125M")
+    def __init__(self, hf_token):
+        # Professional API endpoint - avoids laptop lag
+        self.api_url = "https://api-inference.huggingface.co/models/EleutherAI/gpt-neo-125M"
+        self.headers = {"Authorization": f"Bearer {hf_token}"}
         self.sales_data = self.load_sales_trends()
 
     def load_sales_trends(self):
@@ -12,33 +14,36 @@ class B2BContentEngine:
             with open('sales_trends.csv', mode='r') as file:
                 reader = csv.DictReader(file)
                 for row in reader:
-                    trends[row['category']] = row
+                    trends[row['category'].lower()] = row
         except FileNotFoundError:
             print("Warning: sales_trends.csv not found.")
         return trends
 
     def generate_with_trends(self, product_name, category, features):
-        # Fetch data-driven insight
         trend = self.sales_data.get(category.lower(), {})
-        selling_point = trend.get('top_selling_point', 'general quality')
-        preference = trend.get('consumer_preference', 'reliability')
+        selling_point = trend.get('top_selling_point', 'efficiency')
+        
+        # B2B specific prompt engineering
+        prompt = (f"Write a professional B2B product description focusing on {selling_point}. "
+                  f"Product: {product_name}. Features: {features}. Description:")
 
-        # Context Injection (The "GenAI" Flex)
-        prompt = (f"B2B Strategy: Focus on {selling_point} because consumers prefer {preference}.\n"
-                  f"Product: {product_name}\n"
-                  f"Features: {features}\n"
-                  f"Write a professional product description:")
-
-        raw_output = self.generator(prompt, max_length=150, do_sample=True)[0]['generated_text']
-        return raw_output.replace(prompt, "").strip()
+        # Send to Hugging Face Cloud
+        response = requests.post(self.api_url, headers=self.headers, json={"inputs": prompt})
+        
+        if response.status_code == 200:
+            result = response.json()
+            return result[0]['generated_text'].replace(prompt, "").strip()
+        elif response.status_code == 503:
+            return "Model is loading in the cloud... please try again in 30 seconds."
+        else:
+            return f"Error: {response.status_code}. Check your API token."
 
     def audit_content(self, text, category):
         trend = self.sales_data.get(category.lower(), {})
         avoid = trend.get('avoid_words', '')
+        issues = [f"B2B Audit: Remove '{w.strip()}'" for w in avoid.split(',') if w.strip() and w.strip().lower() in text.lower()]
         
-        issues = []
-        if avoid and avoid in text.lower():
-            issues.append(f"Trend Alert: Avoid '{avoid}' - users currently find it unappealing.")
-        
-        status = "Approved" if not issues else "Needs Optimization"
-        return {"status": status, "feedback": issues}
+        return {
+            "status": "Approved" if not issues else "Needs Optimization",
+            "feedback": issues
+        }
