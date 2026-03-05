@@ -1,10 +1,7 @@
 from ai_engine import B2BContentEngine
 
-# Replace this with your actual Hugging Face token
-HF_TOKEN = "paste_your_token_here"
-
 def run_genai_project():
-    engine = B2BContentEngine(HF_TOKEN)
+    engine = B2BContentEngine(hf_token=None)
     
     product = "Industrial Solar Panel v4"
     category = "energy"
